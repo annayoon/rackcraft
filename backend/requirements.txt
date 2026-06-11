@@ -4,3 +4,4 @@ pydantic>=2.7.0
 python-multipart
 openpyxl
 pandas
+pdfplumber

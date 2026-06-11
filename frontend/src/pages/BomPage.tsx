@@ -63,7 +63,7 @@ export default function BomPage() {
       <div className="bom-header">
         <div>
           <h2>BOM Import</h2>
-          <p className="bom-subtitle">PPTX · Excel · CSV 파일을 업로드하거나 샘플을 불러오세요</p>
+          <p className="bom-subtitle">PPTX · Excel · CSV · PDF 파일을 업로드하거나 샘플을 불러오세요</p>
         </div>
         <div className="bom-actions">
           <button className="btn-secondary" onClick={() => sampleMut.mutate()} disabled={isPending}>
@@ -72,7 +72,7 @@ export default function BomPage() {
           <button className="btn-primary" onClick={() => fileRef.current?.click()} disabled={isPending}>
             파일 업로드
           </button>
-          <input ref={fileRef} type="file" accept=".pptx,.xlsx,.xls,.csv" hidden onChange={handleFile} />
+          <input ref={fileRef} type="file" accept=".pptx,.xlsx,.xls,.csv,.pdf" hidden onChange={handleFile} />
         </div>
       </div>
 
@@ -149,7 +149,7 @@ export default function BomPage() {
       {items.length === 0 && !isPending && (
         <div className="bom-empty">
           <p>파일을 업로드하거나 샘플을 불러오세요</p>
-          <p className="bom-formats">지원 형식: .pptx · .xlsx · .csv</p>
+          <p className="bom-formats">지원 형식: .pptx · .xlsx · .csv · .pdf</p>
         </div>
       )}
 

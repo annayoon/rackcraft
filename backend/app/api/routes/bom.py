@@ -18,8 +18,10 @@ async def import_bom(file: UploadFile = File(...)):
         result = bom_parser.parse_excel(io.BytesIO(content))
     elif name.endswith(".csv"):
         result = bom_parser.parse_csv(io.BytesIO(content))
+    elif name.endswith(".pdf"):
+        result = bom_parser.parse_pdf(io.BytesIO(content))
     else:
-        raise HTTPException(status_code=400, detail="지원 형식: .pptx, .xlsx, .csv")
+        raise HTTPException(status_code=400, detail="지원 형식: .pptx, .xlsx, .csv, .pdf")
 
     return result
 

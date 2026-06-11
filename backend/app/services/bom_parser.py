@@ -1,5 +1,6 @@
 import uuid
 import io
+import re
 from typing import IO
 from app.models.bom import BomItem, BomImportResult
 
@@ -179,3 +180,92 @@ def parse_csv(file: IO[bytes]) -> BomImportResult:
         ))
 
     return BomImportResult(items=items, source="csv", warnings=warnings)
+
+
+def parse_pdf(file: IO[bytes]) -> BomImportResult:
+    import pdfplumber
+    warnings: list[str] = []
+    items: list[BomItem] = []
+
+    with pdfplumber.open(file) as pdf:
+        all_rows: list[list[str]] = []
+
+        for page in pdf.pages:
+            # 테이블 우선 추출
+            tables = page.extract_tables()
+            for table in tables:
+                for row in table:
+                    cleaned = [str(c).strip() if c else "" for c in row]
+                    if any(cleaned):
+                        all_rows.append(cleaned)
+
+            # 테이블이 없으면 텍스트 라인에서 파싱 시도
+            if not tables:
+                text = page.extract_text() or ""
+                for line in text.splitlines():
+                    cols = re.split(r'\s{2,}|\t', line.strip())
+                    if len(cols) >= 3:
+                        all_rows.append(cols)
+
+    if not all_rows:
+        return BomImportResult(items=[], source="pdf", warnings=["테이블 또는 텍스트를 찾을 수 없습니다."])
+
+    # 헤더 행 탐지: qty/수량/equipment 키워드가 있는 행
+    header_idx = 0
+    for i, row in enumerate(all_rows):
+        joined = " ".join(row).lower()
+        if any(k in joined for k in ["qty", "수량", "equipment", "장비"]):
+            header_idx = i
+            break
+
+    header = [c.lower() for c in all_rows[header_idx]]
+    data_rows = _fill_merged_cells(all_rows[header_idx + 1:])
+
+    def col(keywords: list[str]) -> int:
+        for kw in keywords:
+            for i, h in enumerate(header):
+                if kw in h:
+                    return i
+        return -1
+
+    cat_i  = col(["분야", "category"])
+    sub_i  = col(["항목", "sub"])
+    eq_i   = col(["equipment", "장비", "모델"])
+    qty_i  = col(["qty", "수량"])
+    desc_i = col(["설명", "description", "desc"])
+
+    # 헤더 매핑 실패 시 위치 기반 fallback
+    if eq_i == -1:
+        # 컬럼 수에 따라 추정: [분야, 항목, Equipment, Qty, 설명]
+        ncols = len(header)
+        cat_i, sub_i, eq_i, qty_i, desc_i = 0, 1, 2, 3, 4 if ncols >= 5 else (0, -1, 1, 2, 3)
+        warnings.append("헤더를 자동 감지하지 못해 컬럼 위치 기반으로 파싱했습니다.")
+
+    prev_cat, prev_sub = "", ""
+    for row in data_rows:
+        def v(i: int) -> str:
+            return row[i].strip() if 0 <= i < len(row) else ""
+
+        category    = v(cat_i) or prev_cat
+        subcategory = v(sub_i) or prev_sub
+        equipment   = v(eq_i)
+        if not equipment or equipment.lower() in ("equipment", "장비"):
+            continue
+        prev_cat, prev_sub = category, subcategory
+        try:
+            qty = int(float(v(qty_i))) if v(qty_i) else 0
+        except ValueError:
+            qty = 0
+            warnings.append(f"수량 파싱 실패: {row}")
+        specs = _lookup_specs(equipment)
+        items.append(BomItem(
+            id=str(uuid.uuid4()),
+            category=category,
+            subcategory=subcategory,
+            equipment=equipment,
+            quantity=qty,
+            description=v(desc_i),
+            **specs,
+        ))
+
+    return BomImportResult(items=items, source="pdf", warnings=warnings)
